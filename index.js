@@ -29,6 +29,7 @@ async function run() {
         const businessCollection = client.db("SwiftMartDB").collection("business")
         const inventoryCollection = client.db("SwiftMartDB").collection("inventory")
 
+        const reviewCollection = client.db("SwiftMartDB").collection("reviews")
 
 
         // jwt
@@ -263,6 +264,43 @@ async function run() {
                 res.status(500).send({ success: false, message: 'Internal server error' });
             }
         });
+
+         
+        
+        
+        
+        // Reviews
+                // Reviews
+                app.get('/reviews', async (req, res) => {
+                    try {
+                        const reviews = await reviewCollection.find().toArray();
+                        res.send(reviews);
+                    } catch (error) {
+                        console.error('Error fetching reviews:', error);
+                        res.status(500).send({ message: 'Failed to fetch reviews' });
+                    }
+                });
+       
+                app.post('/reviews', async (req, res) => {
+                    try {
+                        console.log("Received request body:", req.body); // Debugging log
+               
+                        const { user, comment, rating } = req.body;
+               
+                        if (!user || !comment || rating === undefined) {
+                            return res.status(400).json({ message: 'Missing required fields' });
+                        }
+               
+                        // Ensure `rating` is stored as a number
+                        const newReview = { user, comment, rating: Number(rating), timestamp: new Date() };
+               
+                        const result = await reviewCollection.insertOne(newReview);
+                        res.status(201).json({ message: 'Review added successfully', review: newReview });
+                    } catch (error) {
+                        console.error('Error adding review:', error);
+                        res.status(500).json({ message: 'Server error', error: error.message });
+                    }
+                });
 
 
 
