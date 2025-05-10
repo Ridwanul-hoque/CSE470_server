@@ -28,8 +28,10 @@ async function run() {
         const usersCollection = client.db("SwiftMartDB").collection("users")
         const businessCollection = client.db("SwiftMartDB").collection("business")
         const inventoryCollection = client.db("SwiftMartDB").collection("inventory")
-
+        const oldCollection = client.db("SwiftMartDB").collection("old")
         const reviewCollection = client.db("SwiftMartDB").collection("reviews")
+        const cartCollection = client.db("SwiftMartDB").collection("cart")
+        const wishlistCollection = client.db("SwiftMartDB").collection("wish")
 
 
         // jwt
@@ -226,11 +228,37 @@ async function run() {
                 res.status(500).send({ message: 'Error adding product' });
             }
         });
-        app.get('/inventory', async (req, res) => {
+        app.get("/inventory", async (req, res) => {
             const email = req.query.email;
-            const result = await inventoryCollection.find({ email }).toArray();
-            res.send(result);
+            try {
+                const query = email ? { email } : {};
+                const items = await inventoryCollection.find(query).toArray();
+                res.send(items);
+            } catch (err) {
+                res.status(500).send({ error: "Failed to fetch items." });
+            }
         });
+
+        app.patch('/inventory/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { quantity } = req.body;
+                const result = await inventoryCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { quantity } }
+                );
+                res.send(result);
+            } catch (error) {
+                console.error("Error updating inventory quantity:", error);
+                res.status(500).send({ error: "Failed to update inventory quantity" });
+            }
+        });
+
+        // app.get('/inventory', async (req, res) => {
+        //     const email = req.query.email;
+        //     const result = await inventoryCollection.find({ email }).toArray();
+        //     res.send(result);
+        // });
         app.delete('/inventory/:id', async (req, res) => {
             const id = req.params.id;
             const result = await inventoryCollection.deleteOne({ _id: new ObjectId(id) });
@@ -265,42 +293,332 @@ async function run() {
             }
         });
 
-         
-        
-        
-        
+
+
+
+
+
         // Reviews
-                // Reviews
-                app.get('/reviews', async (req, res) => {
-                    try {
-                        const reviews = await reviewCollection.find().toArray();
-                        res.send(reviews);
-                    } catch (error) {
-                        console.error('Error fetching reviews:', error);
-                        res.status(500).send({ message: 'Failed to fetch reviews' });
+        app.get('/reviews', async (req, res) => {
+            try {
+                const reviews = await reviewCollection.find().toArray();
+                res.send(reviews);
+            } catch (error) {
+                console.error('Error fetching reviews:', error);
+                res.status(500).send({ message: 'Failed to fetch reviews' });
+            }
+        });
+
+        app.post('/reviews', async (req, res) => {
+            try {
+                console.log("Received request body:", req.body); // Debugging log
+
+                const { user, comment, rating } = req.body;
+
+                if (!user || !comment || rating === undefined) {
+                    return res.status(400).json({ message: 'Missing required fields' });
+                }
+
+                // Ensure `rating` is stored as a number
+                const newReview = { user, comment, rating: Number(rating), timestamp: new Date() };
+
+                const result = await reviewCollection.insertOne(newReview);
+                res.status(201).json({ message: 'Review added successfully', review: newReview });
+            } catch (error) {
+                console.error('Error adding review:', error);
+                res.status(500).json({ message: 'Server error', error: error.message });
+            }
+        });
+
+
+
+
+        // olditem
+        app.post('/old', async (req, res) => {
+            try {
+                const item = req.body;
+                const result = await oldCollection.insertOne(item);
+                res.send({ insertedId: result.insertedId });
+            } catch (err) {
+                res.status(500).send({ error: 'Failed to save item.' });
+            }
+        });
+
+        app.get('/old', async (req, res) => {
+            try {
+                const items = await oldCollection.find().toArray();
+                res.send(items);
+            } catch (err) {
+                res.status(500).send({ error: 'Failed to fetch items.' });
+            }
+        });
+
+
+
+
+
+        // cart
+        // app.post("/cart", async (req, res) => {
+        //     try {
+        //         const item = req.body;
+
+        //         // Optional: Check for duplicates before inserting (especially for 'used' items)
+        //         const exists = await cartCollection.findOne({ _id: item._id });
+        //         if (exists && item.tag === "used") {
+        //             return res.status(409).send({ message: "Item already in cart" });
+        //         }
+
+        //         // 🔒 Check inventory for 'business' products to ensure it's in stock
+        //         if (item.tag === "business") {
+        //             const inventoryItem = await inventoryCollection.findOne({ _id: new ObjectId(item._id) });
+
+        //             if (!inventoryItem || inventoryItem.quantity <= 0) {
+        //                 return res.status(400).send({ message: "This product is out of stock." });
+        //             }
+
+        //             // Decrease inventory quantity by 1
+        //             await inventoryCollection.updateOne(
+        //                 { _id: inventoryItem._id },
+        //                 { $inc: { quantity: -1 } }
+        //             );
+        //         }
+
+        //         const result = await cartCollection.insertOne(item);
+        //         res.status(201).send(result);
+        //     } catch (error) {
+        //         console.error("Error adding to cart:", error);
+        //         res.status(500).send({ error: "Internal server error" });
+        //     }
+        // });
+
+
+        // app.get("/cart", async (req, res) => {
+        //     try {
+        //         const items = await cartCollection.find().toArray();
+        //         res.send(items);
+        //     } catch (error) {
+        //         console.error("Error fetching cart items:", error);
+        //         res.status(500).send({ error: "Internal server error" });
+        //     }
+        // });
+        // app.post("/cart", async (req, res) => {
+        //     try {
+        //         const item = req.body;
+
+        //         // For 'used' items, only allow once
+        //         if (item.tag === "used") {
+        //             const exists = await cartCollection.findOne({ _id: item._id });
+        //             if (exists) {
+        //                 return res.status(409).send({ message: "Used item already in cart" });
+        //             }
+        //             const result = await cartCollection.insertOne({ ...item, quantity: 1 });
+        //             return res.status(201).send(result);
+        //         }
+
+        //         // For 'business' items:
+        //         if (item.tag === "business") {
+        //             const inventoryItem = await inventoryCollection.findOne({ _id: new ObjectId(item._id) });
+
+        //             if (!inventoryItem || inventoryItem.quantity <= 0) {
+        //                 return res.status(400).send({ message: "Product out of stock" });
+        //             }
+
+        //             const cartItem = await cartCollection.findOne({ _id: item._id });
+
+        //             if (cartItem) {
+        //                 // Increment cart quantity by 1
+        //                 await cartCollection.updateOne(
+        //                     { _id: item._id },
+        //                     { $inc: { quantity: 1 } }
+        //                 );
+        //             } else {
+        //                 // Insert new item with quantity 1
+        //                 await cartCollection.insertOne({ ...item, quantity: 1 });
+        //             }
+
+        //             // Decrement inventory by 1
+        //             await inventoryCollection.updateOne(
+        //                 { _id: new ObjectId(item._id) },
+        //                 { $inc: { quantity: -1 } }
+        //             );
+
+        //             return res.status(201).send({ message: "Item added to cart" });
+        //         }
+
+        //         return res.status(400).send({ message: "Invalid item tag" });
+        //     } catch (error) {
+        //         console.error("Error adding to cart:", error);
+        //         res.status(500).send({ error: "Internal server error" });
+        //     }
+        // });
+
+
+
+
+
+        // // app.delete("/cart/:id", async (req, res) => {
+        // //     try {
+        // //         const id = req.params.id;
+        // //         const result = await cartCollection.deleteOne({ _id: id });
+        // //         res.send(result);
+        // //     } catch (error) {
+        // //         console.error("Error removing from cart:", error);
+        // //         res.status(500).send({ error: "Internal server error" });
+        // //     }
+        // // });
+        // app.delete("/cart/:id", async (req, res) => {
+        //     try {
+        //         const id = req.params.id;
+
+        //         const cartItem = await cartCollection.findOne({ _id: id });
+
+        //         if (!cartItem) {
+        //             return res.status(404).send({ error: "Cart item not found" });
+        //         }
+
+        //         const inventoryItem = await inventoryCollection.findOne({ productName: cartItem.productName });
+
+        //         if (inventoryItem) {
+        //             const restoredQuantity = (inventoryItem.quantity || 0) + (cartItem.quantity || 1);
+
+        //             await inventoryCollection.updateOne(
+        //                 { _id: inventoryItem._id },
+        //                 { $set: { quantity: restoredQuantity } }
+        //             );
+        //         }
+
+        //         const result = await cartCollection.deleteOne({ _id: id });
+
+        //         res.send({ success: true, message: "Cart item removed and inventory restored", result });
+        //     } catch (error) {
+        //         console.error("Error removing from cart:", error);
+        //         res.status(500).send({ error: "Internal server error" });
+        //     }
+        // });
+
+
+        // // app.patch("/cart/:id", async (req, res) => {
+        // //     const { id } = req.params;
+        // //     const { quantity } = req.body;
+
+        // //     try {
+        // //         const result = await cartCollection.updateOne(
+        // //             { _id: new ObjectId(id) },
+        // //             { $set: { quantity } }
+        // //         );
+        // //         res.send(result);
+        // //     } catch (err) {
+        // //         console.error("Failed to update cart quantity:", err);
+        // //         res.status(500).send({ error: "Failed to update cart quantity" });
+        // //     }
+        // // });
+        // // app.patch("/cart/:id", async (req, res) => {
+        // //     const { id } = req.params;
+        // //     const { quantity } = req.body;
+
+        // //     try {
+        // //         const result = await cartCollection.updateOne(
+        // //             { _id: new ObjectId(id) },
+        // //             { $set: { quantity } }
+        // //         );
+        // //         res.send(result);
+        // //     } catch (err) {
+        // //         res.status(500).send({ error: "Failed to update cart quantity" });
+        // //     }
+        // // });
+        // app.patch("/cart/:id", async (req, res) => {
+        //     const { id } = req.params;
+        //     const { quantity } = req.body; // quantity here means how much to increment by (e.g., +1)
+
+        //     try {
+        //         const result = await cartCollection.updateOne(
+        //             { _id: new ObjectId(id) },
+        //             { $inc: { quantity } }
+        //         );
+        //         res.send(result);
+        //     } catch (err) {
+        //         res.status(500).send({ error: "Failed to update cart quantity" });
+        //     }
+        // });
+
+        // GET all cart items
+        app.get("/cart", async (req, res) => {
+            try {
+                const items = await cartCollection.find().toArray();
+                res.send(items);
+            } catch (error) {
+                res.status(500).send({ error: "Internal server error" });
+            }
+        });
+
+        // POST add to cart
+        app.post("/cart", async (req, res) => {
+            try {
+                const item = req.body;
+                const itemId = new ObjectId(item._id);
+
+                if (item.tag === "used") {
+                    const exists = await cartCollection.findOne({ _id: itemId });
+                    if (exists) return res.status(409).send({ message: "Used item already in cart" });
+
+                    await cartCollection.insertOne({ ...item, _id: itemId, quantity: 1 });
+                    return res.status(201).send({ message: "Used item added to cart" });
+                }
+
+                if (item.tag === "business") {
+                    const inventoryItem = await inventoryCollection.findOne({ _id: itemId });
+                    if (!inventoryItem || inventoryItem.quantity <= 0) {
+                        return res.status(400).send({ message: "Out of stock" });
                     }
-                });
-       
-                app.post('/reviews', async (req, res) => {
-                    try {
-                        console.log("Received request body:", req.body); // Debugging log
-               
-                        const { user, comment, rating } = req.body;
-               
-                        if (!user || !comment || rating === undefined) {
-                            return res.status(400).json({ message: 'Missing required fields' });
-                        }
-               
-                        // Ensure `rating` is stored as a number
-                        const newReview = { user, comment, rating: Number(rating), timestamp: new Date() };
-               
-                        const result = await reviewCollection.insertOne(newReview);
-                        res.status(201).json({ message: 'Review added successfully', review: newReview });
-                    } catch (error) {
-                        console.error('Error adding review:', error);
-                        res.status(500).json({ message: 'Server error', error: error.message });
+
+                    const cartItem = await cartCollection.findOne({ _id: itemId });
+
+                    if (cartItem) {
+                        await cartCollection.updateOne(
+                            { _id: itemId },
+                            { $inc: { quantity: 1 } }
+                        );
+                    } else {
+                        await cartCollection.insertOne({ ...item, _id: itemId, quantity: 1 });
                     }
-                });
+
+                    await inventoryCollection.updateOne(
+                        { _id: itemId },
+                        { $inc: { quantity: -1 } }
+                    );
+
+                    return res.status(201).send({ message: "Business item added to cart" });
+                }
+
+                return res.status(400).send({ message: "Invalid tag" });
+            } catch (error) {
+                res.status(500).send({ error: "Internal server error" });
+            }
+        });
+
+        // DELETE from cart
+        app.delete("/cart/:id", async (req, res) => {
+            try {
+                const id = new ObjectId(req.params.id);
+                const cartItem = await cartCollection.findOne({ _id: id });
+
+                if (!cartItem) return res.status(404).send({ error: "Cart item not found" });
+
+                if (cartItem.tag === "business") {
+                    await inventoryCollection.updateOne(
+                        { _id: id },
+                        { $inc: { quantity: cartItem.quantity || 1 } }
+                    );
+                }
+
+                await cartCollection.deleteOne({ _id: id });
+                res.send({ message: "Item removed from cart and inventory restored" });
+            } catch (error) {
+                res.status(500).send({ error: "Internal server error" });
+            }
+        });
+
+
 
 
 
