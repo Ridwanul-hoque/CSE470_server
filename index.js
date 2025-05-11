@@ -31,7 +31,8 @@ async function run() {
         const oldCollection = client.db("SwiftMartDB").collection("old")
         const reviewCollection = client.db("SwiftMartDB").collection("reviews")
         const cartCollection = client.db("SwiftMartDB").collection("cart")
-        const wishlistCollection = client.db("SwiftMartDB").collection("wish")
+        const promoteCollection = client.db("SwiftMartDB").collection("promote")
+        const reportCollection = client.db("SwiftMartDB").collection("report")
 
 
         // jwt
@@ -353,6 +354,65 @@ async function run() {
             }
         });
 
+        app.put('/old/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedData = req.body;
+
+            try {
+                const result = await oldCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: {
+                            productName: updatedData.productName,
+                            description: updatedData.description,
+                            address: updatedData.address,
+                            phone: updatedData.phone,
+                            useremail: updatedData.useremail, // optional
+                            price: updatedData.price,
+                            image: updatedData.image,
+                            tag: updatedData.tag || 'used' // default if missing
+                        }
+                    }
+                );
+                res.send(result);
+            } catch (err) {
+                console.error('Update failed:', err);
+                res.status(500).send({ error: 'Failed to update item.' });
+            }
+        });
+
+        // app.delete('/old/:id', async (req, res) => {
+        //     const id = req.params.id;
+        //     try {
+        //         const result = await oldCollection.deleteOne({ _id: new ObjectId(id) });
+        //         if (result.deletedCount === 1) {
+        //             res.send({ success: true });
+        //         } else {
+        //             res.status(404).send({ error: 'Item not found.' });
+        //         }
+        //     } catch (err) {
+        //         res.status(500).send({ error: 'Failed to delete item.' });
+        //     }
+        // });
+
+        // DELETE route
+        app.delete('/old/:id', async (req, res) => {
+            const id = req.params.id;
+            const result = await oldCollection.deleteOne({ _id: new ObjectId(id) });
+            res.send(result);
+        });
+
+        // PUT route
+        app.put('/old/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedData = req.body;
+            const result = await oldCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: updatedData }
+            );
+            res.send(result);
+        });
+
 
 
 
@@ -617,6 +677,159 @@ async function run() {
                 res.status(500).send({ error: "Internal server error" });
             }
         });
+
+
+
+
+
+
+
+        // Promote 
+        // app.post('/promote', async (req, res) => {
+        //     const product = req.body;
+        //     if (!product || !product._id || !product.email) {
+        //         return res.status(400).send({ message: 'Invalid product data' });
+        //     }
+
+        //     try {
+        //         // Check if already promoted
+        //         const exists = await promoteCollection.findOne({ _id: product._id });
+        //         if (exists) {
+        //             return res.status(409).send({ message: 'Already promoted' });
+        //         }
+
+        //         // Create a shallow copy excluding _id
+        //         const { _id, ...promoteData } = product;
+
+        //         // Use original _id as a unique key in the promote collection
+        //         promoteData._id = _id;
+
+        //         await promoteCollection.insertOne(promoteData);
+        //         res.send({ message: 'Product promoted' });
+        //     } catch (err) {
+        //         console.error('Promote error:', err);
+        //         res.status(500).send({ message: 'Server error' });
+        //     }
+        // });
+
+        app.post('/promote', async (req, res) => {
+            const product = req.body;
+            if (!product || !product._id || !product.email) {
+                return res.status(400).send({ message: 'Invalid product data' });
+            }
+
+            try {
+                // Check if already promoted by checking existence with original product id stored in a separate field
+                const exists = await promoteCollection.findOne({ originalProductId: product._id });
+                if (exists) {
+                    return res.status(409).send({ message: 'Already promoted' });
+                }
+
+                // Create a shallow copy and exclude _id
+                const { _id, ...promoteData } = product;
+
+                // Store original product _id in a separate field
+                promoteData.originalProductId = _id;
+
+                // MongoDB will now assign a new ObjectId automatically
+                await promoteCollection.insertOne(promoteData);
+                res.send({ message: 'Product promoted' });
+            } catch (err) {
+                console.error('Promote error:', err);
+                res.status(500).send({ message: 'Server error' });
+            }
+        });
+
+
+        // app.delete('/promote/:id', async (req, res) => {
+        //     const id = req.params.id;
+        //     try {
+        //         const result = await promoteCollection.deleteOne({ _id: id });
+        //         if (result.deletedCount === 0) {
+        //             return res.status(404).send({ message: 'Not found in promote list' });
+        //         }
+        //         res.send({ message: 'Product unpromoted' });
+        //     } catch (err) {
+        //         console.error('Unpromote error:', err);
+        //         res.status(500).send({ message: 'Server error' });
+        //     }
+        // });
+
+        app.delete('/promote/:id', async (req, res) => {
+            const id = req.params.id;
+            try {
+                const result = await promoteCollection.deleteOne({ originalProductId: id });
+                if (result.deletedCount === 0) {
+                    return res.status(404).send({ message: 'Not found in promote list' });
+                }
+                res.send({ message: 'Product unpromoted' });
+            } catch (err) {
+                console.error('Unpromote error:', err);
+                res.status(500).send({ message: 'Server error' });
+            }
+        });
+
+
+        app.get('/promote', async (req, res) => {
+            const email = req.query.email;
+
+            try {
+                let query = {};
+                if (email) {
+                    query.email = email;
+                }
+
+                const promoted = await promoteCollection.find(query).toArray();
+                res.send(promoted);
+            } catch (err) {
+                console.error('Get promote error:', err);
+                res.status(500).send({ message: 'Server error' });
+            }
+        });
+
+
+
+
+
+
+        // report
+        app.post('/report', async (req, res) => {
+            const report = req.body;
+            try {
+                const result = await reportCollection.insertOne(report);
+                res.status(200).send(result);
+            } catch (error) {
+                console.error('Failed to insert report:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
+        app.get('/reports', async (req, res) => {
+            try {
+                const email = req.query.email;
+                const query = email ? { email } : {};
+                const reports = await reportCollection.find(query).toArray();
+                res.send(reports);
+            } catch (error) {
+                console.error('Error fetching reports:', error);
+                res.status(500).send({ error: 'Failed to fetch reports' });
+            }
+        });
+
+
+        app.patch('/report/:id', async (req, res) => {
+            const { id } = req.params;
+            const { status } = req.body;
+
+            const result = await reportCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status } }
+            );
+
+            res.send(result);
+        });
+
+
 
 
 
