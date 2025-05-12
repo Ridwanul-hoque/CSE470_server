@@ -4,6 +4,7 @@ require('dotenv').config()
 const jwt = require('jsonwebtoken')
 const cors = require('cors')
 const port = process.env.PORT || 5000;
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 app.use(cors());
 app.use(express.json());
@@ -33,6 +34,8 @@ async function run() {
         const cartCollection = client.db("SwiftMartDB").collection("cart")
         const promoteCollection = client.db("SwiftMartDB").collection("promote")
         const reportCollection = client.db("SwiftMartDB").collection("report")
+        const wishlistCollection = client.db("SwiftMartDB").collection("wish")
+        const orderHistoryCollection = client.db("SwiftMartDB").collection("history")
 
 
         // jwt
@@ -345,6 +348,7 @@ async function run() {
             }
         });
 
+
         app.get('/old', async (req, res) => {
             try {
                 const items = await oldCollection.find().toArray();
@@ -353,6 +357,9 @@ async function run() {
                 res.status(500).send({ error: 'Failed to fetch items.' });
             }
         });
+
+
+
 
         app.put('/old/:id', async (req, res) => {
             const id = req.params.id;
@@ -601,10 +608,94 @@ async function run() {
         //     }
         // });
 
+        // // GET all cart items
+        // app.get("/cart", async (req, res) => {
+        //     try {
+        //         const items = await cartCollection.find().toArray();
+        //         res.send(items);
+        //     } catch (error) {
+        //         res.status(500).send({ error: "Internal server error" });
+        //     }
+        // });
+
+        // // POST add to cart
+        // app.post("/cart", async (req, res) => {
+        //     try {
+        //         const item = req.body;
+        //         const itemId = new ObjectId(item._id);
+
+        //         if (item.tag === "used") {
+        //             const exists = await cartCollection.findOne({ _id: itemId });
+        //             if (exists) return res.status(409).send({ message: "Used item already in cart" });
+
+        //             await cartCollection.insertOne({ ...item, _id: itemId, quantity: 1 });
+        //             return res.status(201).send({ message: "Used item added to cart" });
+        //         }
+
+        //         if (item.tag === "business") {
+        //             const inventoryItem = await inventoryCollection.findOne({ _id: itemId });
+        //             if (!inventoryItem || inventoryItem.quantity <= 0) {
+        //                 return res.status(400).send({ message: "Out of stock" });
+        //             }
+
+        //             const cartItem = await cartCollection.findOne({ _id: itemId });
+
+        //             if (cartItem) {
+        //                 await cartCollection.updateOne(
+        //                     { _id: itemId },
+        //                     { $inc: { quantity: 1 } }
+        //                 );
+        //             } else {
+        //                 await cartCollection.insertOne({ ...item, _id: itemId, quantity: 1 });
+        //             }
+
+        //             await inventoryCollection.updateOne(
+        //                 { _id: itemId },
+        //                 { $inc: { quantity: -1 } }
+        //             );
+
+        //             return res.status(201).send({ message: "Business item added to cart" });
+        //         }
+
+        //         return res.status(400).send({ message: "Invalid tag" });
+        //     } catch (error) {
+        //         res.status(500).send({ error: "Internal server error" });
+        //     }
+        // });
+
+        // // DELETE from cart
+        // app.delete("/cart/:id", async (req, res) => {
+        //     try {
+        //         const id = new ObjectId(req.params.id);
+        //         const cartItem = await cartCollection.findOne({ _id: id });
+
+        //         if (!cartItem) return res.status(404).send({ error: "Cart item not found" });
+
+        //         if (cartItem.tag === "business") {
+        //             await inventoryCollection.updateOne(
+        //                 { _id: id },
+        //                 { $inc: { quantity: cartItem.quantity || 1 } }
+        //             );
+        //         }
+
+        //         await cartCollection.deleteOne({ _id: id });
+        //         res.send({ message: "Item removed from cart and inventory restored" });
+        //     } catch (error) {
+        //         res.status(500).send({ error: "Internal server error" });
+        //     }
+        // });
+
+
+
         // GET all cart items
+        // a// GET all cart items
         app.get("/cart", async (req, res) => {
             try {
-                const items = await cartCollection.find().toArray();
+                const userEmail = req.query.userEmail;
+                if (!userEmail) {
+                    return res.status(400).send({ error: "User email is required" });
+                }
+                const items = await cartCollection.find({ userEmail: userEmail }).toArray();
                 res.send(items);
             } catch (error) {
                 res.status(500).send({ error: "Internal server error" });
@@ -615,35 +706,67 @@ async function run() {
         app.post("/cart", async (req, res) => {
             try {
                 const item = req.body;
-                const itemId = new ObjectId(item._id);
+                const userEmail = item.userEmail;
+
+                if (!userEmail) {
+                    return res.status(400).send({ error: "User email is required" });
+                }
+
+                const productId = item._id; // Store original product ID
+                delete item._id; // Remove _id to let MongoDB generate a new one
 
                 if (item.tag === "used") {
-                    const exists = await cartCollection.findOne({ _id: itemId });
-                    if (exists) return res.status(409).send({ message: "Used item already in cart" });
+                    // Check if the item already exists in the user's cart
+                    const exists = await cartCollection.findOne({
+                        productId: productId,
+                        userEmail: userEmail
+                    });
 
-                    await cartCollection.insertOne({ ...item, _id: itemId, quantity: 1 });
+                    if (exists) {
+                        return res.status(409).send({ message: "Used item already in cart" });
+                    }
+
+                    await cartCollection.insertOne({
+                        ...item,
+                        productId: productId, // Store original product ID as reference
+                        quantity: 1
+                    });
                     return res.status(201).send({ message: "Used item added to cart" });
                 }
 
                 if (item.tag === "business") {
-                    const inventoryItem = await inventoryCollection.findOne({ _id: itemId });
+                    const inventoryItem = await inventoryCollection.findOne({
+                        _id: new ObjectId(productId)
+                    });
+
                     if (!inventoryItem || inventoryItem.quantity <= 0) {
                         return res.status(400).send({ message: "Out of stock" });
                     }
 
-                    const cartItem = await cartCollection.findOne({ _id: itemId });
+                    // Check if the item exists in the user's cart
+                    const cartItem = await cartCollection.findOne({
+                        productId: productId,
+                        userEmail: userEmail
+                    });
 
                     if (cartItem) {
                         await cartCollection.updateOne(
-                            { _id: itemId },
+                            {
+                                productId: productId,
+                                userEmail: userEmail
+                            },
                             { $inc: { quantity: 1 } }
                         );
                     } else {
-                        await cartCollection.insertOne({ ...item, _id: itemId, quantity: 1 });
+                        await cartCollection.insertOne({
+                            ...item,
+                            productId: productId, // Store original product ID as reference
+                            quantity: 1
+                        });
                     }
 
                     await inventoryCollection.updateOne(
-                        { _id: itemId },
+                        { _id: new ObjectId(productId) },
                         { $inc: { quantity: -1 } }
                     );
 
@@ -652,6 +775,7 @@ async function run() {
 
                 return res.status(400).send({ message: "Invalid tag" });
             } catch (error) {
+                console.error("Error adding to cart:", error);
                 res.status(500).send({ error: "Internal server error" });
             }
         });
@@ -659,24 +783,41 @@ async function run() {
         // DELETE from cart
         app.delete("/cart/:id", async (req, res) => {
             try {
-                const id = new ObjectId(req.params.id);
-                const cartItem = await cartCollection.findOne({ _id: id });
+                const id = req.params.id;
+                const userEmail = req.query.userEmail;
 
-                if (!cartItem) return res.status(404).send({ error: "Cart item not found" });
+                if (!userEmail) {
+                    return res.status(400).send({ error: "User email is required" });
+                }
+
+                const cartItem = await cartCollection.findOne({
+                    _id: new ObjectId(id),
+                    userEmail: userEmail
+                });
+
+                if (!cartItem) {
+                    return res.status(404).send({ error: "Cart item not found" });
+                }
 
                 if (cartItem.tag === "business") {
                     await inventoryCollection.updateOne(
-                        { _id: id },
+                        { _id: new ObjectId(cartItem.productId) },
                         { $inc: { quantity: cartItem.quantity || 1 } }
                     );
                 }
 
-                await cartCollection.deleteOne({ _id: id });
+                await cartCollection.deleteOne({
+                    _id: new ObjectId(id),
+                    userEmail: userEmail
+                });
+
                 res.send({ message: "Item removed from cart and inventory restored" });
             } catch (error) {
+                console.error("Error removing from cart:", error);
                 res.status(500).send({ error: "Internal server error" });
             }
         });
+
 
 
 
@@ -827,6 +968,62 @@ async function run() {
             );
 
             res.send(result);
+        });
+
+
+
+
+
+
+
+
+
+
+        // payment
+        
+        app.post('/create-payment-intent', async (req, res) => {
+            try {
+                const { amount, userEmail } = req.body;
+
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount,
+                    currency: 'usd',
+                    metadata: { userEmail },
+                    automatic_payment_methods: {
+                        enabled: true,
+                    },
+                });
+
+                res.send({
+                    clientSecret: paymentIntent.client_secret,
+                });
+            } catch (error) {
+                console.error('Error creating payment intent:', error);
+                res.status(500).send({ error: error.message });
+            }
+        });
+
+        app.post('/history', async (req, res) => {
+            try {
+                const orderData = req.body;
+                const result = await orderHistoryCollection.insertOne(orderData);
+                res.send(result);
+            } catch (error) {
+                console.error('Error saving order history:', error);
+                res.status(500).send({ error: error.message });
+            }
+        });
+
+        app.get('/history', async (req, res) => {
+            try {
+                const userEmail = req.query.userEmail;
+                const query = { userEmail };
+                const result = await orderHistoryCollection.find(query).toArray();
+                res.send(result);
+            } catch (error) {
+                console.error('Error fetching order history:', error);
+                res.status(500).send({ error: error.message });
+            }
         });
 
 
