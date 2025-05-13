@@ -972,7 +972,7 @@ async function run() {
 
 
 
-        
+
         // payment
 
         app.post('/create-payment-intent', async (req, res) => {
@@ -1019,6 +1019,41 @@ async function run() {
                 res.status(500).send({ error: error.message });
             }
         });
+
+
+
+
+
+
+
+
+
+
+
+        // wishlist
+
+        app.post("/wish", async (req, res) => {
+            const item = req.body;
+            const exists = await wishlistCollection.findOne({ _id: item._id, useremail: item.useremail });
+            if (exists) {
+                return res.status(409).send("Already in wishlist");
+            }
+            await wishlistCollection.insertOne(item);
+            res.sendStatus(201);
+        });
+
+        app.get("/wish", async (req, res) => {
+            const all = await wishlistCollection.find().toArray();
+            res.send(all);
+        });
+
+        app.delete("/wish/:id", async (req, res) => {
+            const id = req.params.id;
+            const result = await wishlistCollection.deleteOne({ _id: new ObjectId(id) });
+            res.send(result);
+        });
+
+
 
 
 
