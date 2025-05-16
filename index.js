@@ -1008,12 +1008,46 @@ async function run() {
             }
         });
 
+        // app.get('/history', async (req, res) => {
+        //     try {
+        //         const userEmail = req.query.userEmail;
+        //         const query = { userEmail };
+        //         const result = await orderHistoryCollection.find(query).toArray();
+        //         res.send(result);
+        //     } catch (error) {
+        //         console.error('Error fetching order history:', error);
+        //         res.status(500).send({ error: error.message });
+        //     }
+        // });
+
+        // app.get('/history', async (req, res) => {
+        //     try {
+        //         const result = await orderHistoryCollection.find().toArray(); // No filtering here
+        //         res.send(result);
+        //     } catch (error) {
+        //         console.error('Error fetching order history:', error);
+        //         res.status(500).send({ error: error.message });
+        //     }
+        // });
+
         app.get('/history', async (req, res) => {
             try {
                 const userEmail = req.query.userEmail;
-                const query = { userEmail };
-                const result = await orderHistoryCollection.find(query).toArray();
-                res.send(result);
+                const role = req.query.role; // 'buyer' or 'seller'
+
+                const allOrders = await orderHistoryCollection.find().toArray();
+
+                if (userEmail && role === 'buyer') {
+                    // Case 1: Fetch where the user is the buyer (outer userEmail)
+                    const buyerOrders = allOrders.filter(order => order.userEmail === userEmail);
+                    return res.send(buyerOrders);
+                } else if (userEmail && role === 'seller') {
+                    // Case 2: Fetch all orders, and later filter items in frontend
+                    return res.send(allOrders); // filter seller items in React
+                } else {
+                    // Default: return all
+                    return res.send(allOrders);
+                }
             } catch (error) {
                 console.error('Error fetching order history:', error);
                 res.status(500).send({ error: error.message });
@@ -1030,17 +1064,38 @@ async function run() {
 
 
 
+
+
         // wishlist
 
+        // app.post("/wish", async (req, res) => {
+        //     const item = req.body;
+        //     const exists = await wishlistCollection.findOne({ _id: item._id, useremail: item.useremail });
+        //     if (exists) {
+        //         return res.status(409).send("Already in wishlist");
+        //     }
+        //     await wishlistCollection.insertOne(item);
+        //     res.sendStatus(201);
+        // });
         app.post("/wish", async (req, res) => {
             const item = req.body;
-            const exists = await wishlistCollection.findOne({ _id: item._id, useremail: item.useremail });
+
+            // Remove existing _id to avoid duplicate key error
+            delete item._id;
+
+            const exists = await wishlistCollection.findOne({
+                productName: item.productName,
+                useremail: item.useremail
+            });
+
             if (exists) {
                 return res.status(409).send("Already in wishlist");
             }
+
             await wishlistCollection.insertOne(item);
             res.sendStatus(201);
         });
+
 
         app.get("/wish", async (req, res) => {
             const all = await wishlistCollection.find().toArray();
@@ -1055,6 +1110,29 @@ async function run() {
 
 
 
+
+
+        // Search route
+        app.post('/search-user', async (req, res) => {
+            const { email } = req.body;
+
+            try {
+                const user = await usersCollection.findOne({ email: email.toLowerCase() });
+
+                if (user) {
+                    // Send name AND email to frontend
+                    res.json({
+                        success: true,
+                        name: user.name,
+                        email: user.email  // Add this line
+                    });
+                } else {
+                    res.json({ success: false, message: 'User not found.' });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, message: 'Server error.' });
+            }
+        });
 
 
 
